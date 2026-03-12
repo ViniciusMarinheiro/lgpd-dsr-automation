@@ -1,12 +1,12 @@
-# Configuração do Provedor AWS
+# Configuração do Provedor AWS utilizando variáveis
 provider "aws" {
-  region = "us-east-1" # Região padrão para o Free Tier
+  region = var.aws_region
 }
 
 # 1. Tabela de Auditoria (Audit Trail) - Conformidade LGPD
 resource "aws_dynamodb_table" "lgpd_audit" {
-  name         = "lgpd_audit_trail"
-  billing_mode = "PAY_PER_REQUEST" # Foco em FinOps (paga apenas o que usar)
+  name         = var.audit_table_name
+  billing_mode = "PAY_PER_REQUEST" 
   hash_key     = "PK"
   range_key    = "SK"
 
@@ -27,7 +27,8 @@ resource "aws_dynamodb_table" "lgpd_audit" {
   }
 
   tags = {
-    Project     = "LGPD-DSR-Automation"
+    Name        = var.audit_table_name
+    Project     = var.project_name
     Environment = "Dev"
     LawContext  = "Art-18-LGPD"
   }
@@ -35,7 +36,7 @@ resource "aws_dynamodb_table" "lgpd_audit" {
 
 # 2. IAM Role para a Lambda (Segurança por Design)
 resource "aws_iam_role" "lambda_role" {
-  name = "lgpd_lambda_role"
+  name = "${var.project_name}-lambda-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -47,10 +48,10 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-# 3. Política de Acesso ao DynamoDB e Logs
+# 3. Política de Acesso (Princípio do Menor Privilégio)
 resource "aws_iam_policy" "lambda_policy" {
-  name        = "lgpd_lambda_policy"
-  description = "Permissões mínimas para gravar auditoria e logs"
+  name        = "${var.project_name}-lambda-policy"
+  description = "Permissões restritas para gravação de auditoria LGPD"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -74,13 +75,13 @@ resource "aws_iam_role_policy_attachment" "lambda_attach" {
   policy_arn = aws_iam_policy.lambda_policy.arn
 }
 
-# 4. Função Lambda (O Coração da Automação)
+# 4. Função Lambda (Law-as-Code)
 resource "aws_lambda_function" "dsr_handler" {
-  filename      = "lambda_function_payload.zip" # Você precisará zipar a pasta src/
-  function_name = "lgpd_dsr_handler"
+  filename      = "lambda_function_payload.zip"
+  function_name = "${var.project_name}-handler"
   role          = aws_iam_role.lambda_role.arn
   handler       = "handler.lambda_handler"
-  runtime       = "python3.13" # Versão mais recente do Python
+  runtime       = "python3.13"
 
   environment {
     variables = {
